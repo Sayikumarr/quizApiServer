@@ -29,9 +29,8 @@ class QuizViewSet(viewsets.ViewSet):
 
                     # Formatting questions as a separate list
                     questions = quiz_data.pop('questions')
-                    formatted_data = [quiz_data, questions]
+                    formatted_data = {"quiz": quiz_data, "questions": questions}
 
-                    # return Response({"message": "Incomplete quizzes found", "next_quiz": formatted_data}, status=status.HTTP_200_OK)
                     return Response(formatted_data)
 
             # If all quizzes are completed
@@ -43,7 +42,7 @@ class QuizViewSet(viewsets.ViewSet):
 
         # Formatting questions as a separate list
         questions = quiz_data.pop('questions')
-        formatted_data = [quiz_data, questions]
+        formatted_data = {"quiz": quiz_data, "questions": questions}
 
         return Response(formatted_data)
 
@@ -78,6 +77,10 @@ def save_results(request):
         quiz = Quiz.objects.get(id=quiz_id)
     except Quiz.DoesNotExist:
         return Response({"error": "Quiz not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    # Check for duplicate submission
+    if Result.objects.filter(quiz=quiz, user=user).exists():
+        return Response({"error": "You have already submitted results for this quiz."}, status=status.HTTP_409_CONFLICT)
 
     # Create Result object
     result = Result.objects.create(quiz=quiz, user=user, score=0, name=user_name)
