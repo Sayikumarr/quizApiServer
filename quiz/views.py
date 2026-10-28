@@ -1,7 +1,7 @@
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 from rest_framework.decorators import action
-from .models import Quiz, Result
+from .models import Quiz, Result, Question, Option
 from .serializers import QuizSerializer
 
 class QuizViewSet(viewsets.ViewSet):
@@ -111,3 +111,70 @@ def save_results(request):
     }
 
     return Response(response_data, status=status.HTTP_201_CREATED)
+
+
+from django.db import transaction
+
+@api_view(['POST'])
+def create_quiz(request):
+    """
+    Public endpoint to create a new Quiz with Questions and Options from AI JSON.
+    Payload:
+    [
+      {"title": "...", "description": "..."},
+      [
+        {
+          "question": "...",
+          "options": [{"1": "..."}, {"2": "..."}, {"3": "..."}, {"4": "..."}],
+          "answer": "1",
+          "related_md": "..."
+        }
+      ]
+    ]
+    """
+    data = request.data
+    if not isinstance(data, list) or len(data) < 2:
+        return Response({"error": "Invalid format. Expected [metadata_dict, questions_list]."}, status=status.HTTP_400_BAD_REQUEST)
+
+    meta = data[0]
+    questions_list = data[1]
+
+    title = meta.get('title')
+    description = meta.get('description', '')
+    if not title:
+        return Response({"error": "Quiz title is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+    with transaction.atomic():
+        quiz = Quiz.objects.create(title=title, description=description)
+
+        created_questions = 0
+        for q in questions_list:
+            q_text = q.get('question', '')
+            answer_id = str(q.get('answer', '1'))
+            related_md = q.get('related_md', '')
+
+            question_obj = Question.objects.create(
+                quiz=quiz,
+                question=q_text,
+                answer_id=answer_id,
+                related_md=related_md
+            )
+            created_questions += 1
+
+            options = q.get('options', [])
+            for opt_dict in options:
+                if isinstance(opt_dict, dict):
+                    for opt_id, opt_text in opt_dict.items():
+                        Option.objects.create(
+                            question=question_obj,
+                            option_id=str(opt_id),
+                            option_text=str(opt_text)
+                        )
+
+    return Response({
+        "status": "success",
+        "quiz_id": quiz.id,
+        "title": quiz.title,
+        "questions_count": created_questions
+    }, status=status.HTTP_201_CREATED)
+
