@@ -12,16 +12,16 @@ class QuizViewSet(viewsets.ViewSet):
         if not user:
             return Response({"message": "User not provided"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Fetch the latest quiz based on ID
-        latest_quiz = Quiz.objects.order_by('-id').first()
+        # Fetch the latest quiz that contains questions
+        latest_quiz = Quiz.objects.filter(questions__isnull=False).distinct().order_by('-id').first()
         
         if not latest_quiz:
             return Response({"message": "No quizzes found"}, status=status.HTTP_404_NOT_FOUND)
 
         # Check if the user has already completed the latest quiz
         if Result.objects.filter(quiz=latest_quiz, user=user).exists():
-            # Check if the user has completed all previous quizzes
-            all_quizzes = Quiz.objects.filter(id__lte=latest_quiz.id).order_by('-id')  # Fetch all quizzes up to the latest
+            # Check previous quizzes that actually have questions
+            all_quizzes = Quiz.objects.filter(id__lte=latest_quiz.id, questions__isnull=False).distinct().order_by('-id')
             for quiz in all_quizzes:
                 if not Result.objects.filter(quiz=quiz, user=user).exists():
                     quiz_serializer = QuizSerializer(quiz)
@@ -29,6 +29,8 @@ class QuizViewSet(viewsets.ViewSet):
 
                     # Formatting questions as a separate list
                     questions = quiz_data.pop('questions')
+                    if not questions:
+                        continue
                     formatted_data = {"quiz": quiz_data, "questions": questions}
 
                     return Response(formatted_data)
@@ -42,6 +44,8 @@ class QuizViewSet(viewsets.ViewSet):
 
         # Formatting questions as a separate list
         questions = quiz_data.pop('questions')
+        if not questions:
+            return Response({"message": "No questions found in latest quiz"}, status=status.HTTP_404_NOT_FOUND)
         formatted_data = {"quiz": quiz_data, "questions": questions}
 
         return Response(formatted_data)
